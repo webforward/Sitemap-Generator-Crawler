@@ -51,6 +51,8 @@ $extension = array(
 $freq = "daily";
 $priority = "1";
 
+$ignore_duplicate_pages = true;
+
 /* NO NEED TO EDIT BELOW THIS LINE */
 
 function endsWith($haystack, $needle)
@@ -106,14 +108,17 @@ function GetUrlModified($url)
 
 function Scan($url)
 {
-    global $scanned, $pf, $skip, $freq, $priority, $enable_modified, $enable_priority, $enable_frequency, $max_depth, $depth;
+    global $scanned, $pf, $freq, $priority, $enable_modified, $enable_priority, $enable_frequency, $max_depth, $depth, $page_contents, $ignore_duplicate_pages;
     array_push($scanned, $url);
     $depth++;
 
     if (isset($max_depth) && ($depth <= $max_depth || $max_depth == 0)) {
 
         $html = GetUrl($url);
+        if (isset($ignore_duplicate_pages) && $ignore_duplicate_pages == true) $hash = md5($html);
+
         if ($enable_modified) $modified = GetUrlModified($url);
+
 
         $regexp = "<a\s[^>]*href=(\"??)([^\" >]*?)\\1[^>]*>(.*)<\/a>";
         if (preg_match_all("/$regexp/siU", $html, $matches)) {
@@ -134,12 +139,13 @@ function Scan($url)
 
                     if (substr($href, 0, strlen($scanned[0])) == $scanned[0]) {
                         // If href is a sub of the scanned url
-                        $ignore = false;
-                        if (isset($skip))
-                            foreach ($skip as $k => $v)
-                                if (substr($href, 0, strlen($v)) == $v)
-                                    $ignore = true;
-                        if ((!$ignore) && (!in_array($href, $scanned)) && Check($href)) {
+
+                        if (isset($hash) && key_exists($hash, $page_contents)) {
+                            $ignore = true;
+                        }
+                        if (isset($hash)) array_push($page_contents, isset($page_contents[$hash])?$page_contents[$hash]+1:1);
+
+                        if (!isset($ignore) && (!in_array($href, $scanned)) && Check($href)) {
 
                             $map_row = "<url>\n";
                             $map_row .= "<loc>$href</loc>\n";
@@ -149,6 +155,7 @@ function Scan($url)
                             $map_row .= "</url>\n";
 
                             fwrite($pf, $map_row);
+
 
                             echo "Added: " . $href . ((!empty($modified)) ? " [Modified: " . $modified . "]" : '') . "\n";
 
@@ -185,10 +192,12 @@ fwrite($pf, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
   " . ($enable_frequency ? "<changefreq>daily</changefreq>\n" : '') . "</url>
 ");
 $depth = 0;
+$page_contents = array();
 $scanned = array();
 Scan($url);
 fwrite($pf, "</urlset>\n");
 fclose($pf);
 $time_elapsed_secs = microtime(true) - $start;
 echo "Sitemap has been generated in " . $time_elapsed_secs . " second" . ($time_elapsed_secs >= 1 ? 's' : '') . ".\n";
+print_r($page_contents);
 ?>
